@@ -10,6 +10,7 @@ public class LoanTransformer {
 
     public static LoanDto transformLoanToDto(Loan loan) {
         LoanDto loanDto = new LoanDto();
+        loanDto.setLoanId(loan.getLoanId());
         loanDto.setLoanOwner(loan.getLoanOwner());
         loanDto.setTotalAmount(loan.getTotalAmount());
         loanDto.setPendingAmount(loan.getPendingAmount());
@@ -25,6 +26,7 @@ public class LoanTransformer {
 
     public static Loan transformDtoToLoan(LoanDto loanDto) {
         Loan loan = new Loan();
+        loan.setLoanId(loanDto.getLoanId());
         loan.setLoanOwner(loanDto.getLoanOwner());
         loan.setTotalAmount(loanDto.getTotalAmount());
         loan.setPendingAmount(loanDto.getPendingAmount());

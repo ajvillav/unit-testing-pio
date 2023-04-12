@@ -3,10 +3,12 @@ package com.loan.payment.service;
 import com.loan.payment.dto.UserDto;
 import com.loan.payment.model.User;
 import com.loan.payment.repository.UsersRepository;
+import com.loan.payment.service.exception.UserException;
 import com.loan.payment.transformer.UserTransformer;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -39,5 +41,16 @@ public class UserService {
         userToSave.setUserAccount(UUID.randomUUID());
 
         return UserTransformer.transformUserToDto(usersRepository.save(userToSave));
+    }
+
+    public void deleteUser(int userId) throws UserException {
+        Optional<User> userOptional = usersRepository.findById(userId);
+
+        if (userOptional.isPresent()) {
+            User user = userOptional.get();
+            usersRepository.delete(user);
+        } else {
+            throw new UserException("Could not found user with ID: " + userId);
+        }
     }
 }

@@ -11,8 +11,11 @@ import com.loan.payment.repository.LoanRepository;
 import com.loan.payment.repository.UsersRepository;
 import com.loan.payment.transformer.LoanTransformer;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 
 @Service
 public class LoanService {
@@ -77,5 +80,32 @@ public class LoanService {
         if(requesterAccount.getAccountBalance() < MINIMUM_PERCENTAGE * loanDto.getTotalAmount()){
             throw new AccountException("The balance in your account is insufficient to qualify for the loan!");
         }
+    }
+
+    /**
+     * Method for making a single payment of a loan
+     * @param loanId
+     * @param paymentAmount
+     * @throws LoanException
+     */
+    @Transactional
+    public void makeLoanPayment(UUID loanId, int paymentAmount) throws LoanException {
+        Optional<Loan> optionalLoan = loanRepository.findById(loanId);
+        if(optionalLoan.isEmpty()) {
+            throw new LoanException("Loan does not exist!");
+        }
+
+        // Set loan updated information
+        Loan loan = optionalLoan.get();
+        loan.setPendingAmount(loan.getPendingAmount() - paymentAmount);
+        loan.setPaymentsNumber(loan.getPaymentsNumber() - 1);
+
+        // Set account new balance after payment
+        Account account = accountRepository.findByAccountOwner(loan.getLoanOwner());
+        int newBalance = account.getAccountBalance() - paymentAmount;
+        account.setAccountBalance(newBalance);
+
+        loanRepository.save(loan);
+        accountRepository.save(account);
     }
 }
