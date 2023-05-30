@@ -11,13 +11,20 @@ import com.loan.payment.service.exception.AccountException;
 import com.loan.payment.service.exception.LoanException;
 import com.loan.payment.service.exception.UserException;
 import com.loan.payment.transformer.LoanTransformer;
+import org.awaitility.Awaitility;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -26,6 +33,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -46,59 +54,26 @@ public class LoanServiceTest {
         loanService = new LoanService(loanRepository, usersRepository, accountRepository);
     }
 
-    @Test
-    @DisplayName("requestLoan - Must return loan dto from created loan in DB and apply all validations")
-    void requestLoanAppliesAllValidationsAndCreateLoan() throws AccountException, LoanException, UserException {
-        //Given
-        int loanOwner = 1020486382;
-
-        LoanDto loanDto = new LoanDto();
-        loanDto.setLoanOwner(loanOwner);
-        loanDto.setTotalAmount(1000);
-        loanDto.setPendingAmount(800);
-        loanDto.setPaymentsNumber(7);
-
-        UUID userAccountId = UUID.randomUUID();
-        User user = new User();
-        user.setUserName("Andres Villa");
-        user.setUserAccount(userAccountId);
-
-        Account userAccount = new Account();
-        userAccount.setAccountNumber(user.getUserAccount());
-        userAccount.setAccountOwner(loanOwner);
-        userAccount.setAccountBalance(500);
-
-        Loan loanToSave = LoanTransformer.transformDtoToLoan(loanDto);
-
-        when(usersRepository.findById(loanOwner)).thenReturn(Optional.of(user));
-        when(accountRepository.findByAccountOwner(loanOwner)).thenReturn(userAccount);
-        when(loanRepository.save(loanToSave)).thenReturn(loanToSave);
-
-        //When
-        LoanDto savedLoanDto = loanService.requestLoan(loanDto);
-
-        //Then
-        assertNotNull(savedLoanDto);
-        assertAll(
-                () -> assertEquals(loanDto.getLoanId(), savedLoanDto.getLoanId()),
-                () -> assertEquals(loanDto.getLoanOwner(), savedLoanDto.getLoanOwner()),
-                () -> assertEquals(loanDto.getTotalAmount(), savedLoanDto.getTotalAmount()),
-                () -> assertEquals(loanDto.getPendingAmount(), savedLoanDto.getPendingAmount()),
-                () -> assertEquals(loanDto.getPaymentsNumber(), savedLoanDto.getPaymentsNumber())
+    private static Stream<Arguments> requestLoanParams() {
+        return Stream.of(
+                Arguments.of(3,900),
+                Arguments.of(7,1000)
         );
     }
 
-    @Test
+    @ParameterizedTest
+    @MethodSource("requestLoanParams")
     @DisplayName("requestLoan - Must return loan dto from created loan in DB and apply all validations")
-    void requestLoanAppliesAllValidationsAndCreateLoan1() throws AccountException, LoanException, UserException {
+    void requestLoanAppliesAllValidationsAndCreateLoanWithParams(int paymentsNumber, int expectedPendingAmount)
+            throws AccountException, LoanException, UserException {
         //Given
         int loanOwner = 1020486382;
 
         LoanDto loanDto = new LoanDto();
         loanDto.setLoanOwner(loanOwner);
         loanDto.setTotalAmount(1000);
-        loanDto.setPendingAmount(800);
-        loanDto.setPaymentsNumber(3);
+        loanDto.setPendingAmount(1000);
+        loanDto.setPaymentsNumber(paymentsNumber);
 
         UUID userAccountId = UUID.randomUUID();
         User user = new User();
@@ -111,11 +86,16 @@ public class LoanServiceTest {
         userAccount.setAccountBalance(500);
 
         Loan loanToSave = LoanTransformer.transformDtoToLoan(loanDto);
-        loanToSave.setPendingAmount((int)(loanToSave.getTotalAmount()*0.9));
 
         when(usersRepository.findById(loanOwner)).thenReturn(Optional.of(user));
         when(accountRepository.findByAccountOwner(loanOwner)).thenReturn(userAccount);
-        when(loanRepository.save(loanToSave)).thenReturn(loanToSave);
+        when(loanRepository.save(any(Loan.class))).thenAnswer(invocation -> {
+            var savedLoan = invocation.getArgument(0, Loan.class);
+            if(loanDto.getPaymentsNumber() <= 3) {
+                savedLoan.setPendingAmount((int)(loanToSave.getTotalAmount() * 0.9));
+            }
+            return savedLoan;
+        });
 
         //When
         LoanDto savedLoanDto = loanService.requestLoan(loanDto);
@@ -126,7 +106,7 @@ public class LoanServiceTest {
                 () -> assertEquals(loanDto.getLoanId(), savedLoanDto.getLoanId()),
                 () -> assertEquals(loanDto.getLoanOwner(), savedLoanDto.getLoanOwner()),
                 () -> assertEquals(loanDto.getTotalAmount(), savedLoanDto.getTotalAmount()),
-                () -> assertEquals((int)(0.9*loanDto.getTotalAmount()), savedLoanDto.getPendingAmount()),
+                () -> assertEquals(expectedPendingAmount, savedLoanDto.getPendingAmount()),
                 () -> assertEquals(loanDto.getPaymentsNumber(), savedLoanDto.getPaymentsNumber())
         );
     }
@@ -289,5 +269,30 @@ public class LoanServiceTest {
         //Then
         verify(loanRepository).save(any(Loan.class));
         verify(accountRepository).save(any(Account.class));
+    }
+
+    @Test
+    void testBulkLoanDeletion() {
+        //Given-When
+        loanService.bulkLoanDeletion();
+
+        verify(loanRepository, times(0)).deleteAll();
+
+        //Then
+        Awaitility.await().atMost(40, TimeUnit.SECONDS).untilAsserted(() -> verify(loanRepository).deleteAll()
+        );
+    }
+
+    @Test
+    public void testAsyncOperation() throws InterruptedException {
+        // Given-When
+        loanService.bulkLoanDeletion();
+
+        verify(loanRepository, times(0)).deleteAll();
+
+        // Then - Use Thread.sleep to wait for a specific time
+        Thread.sleep(20000);
+
+        verify(loanRepository).deleteAll();
     }
 }

@@ -16,6 +16,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 @Service
 public class LoanService {
@@ -30,6 +32,18 @@ public class LoanService {
         this.loanRepository = loanRepository;
         this.usersRepository = userRepository;
         this.accountRepository = accountRepository;
+    }
+
+    public void bulkLoanDeletion() {
+        CompletableFuture.runAsync(() -> {
+            try {
+                TimeUnit.SECONDS.sleep(5);
+                loanRepository.deleteAll();
+                System.out.println("DELETED");
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        });
     }
 
     public List<LoanDto> getAllLoans() throws LoanException {
